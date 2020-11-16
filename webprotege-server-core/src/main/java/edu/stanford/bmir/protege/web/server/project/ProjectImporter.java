@@ -63,7 +63,7 @@ public class ProjectImporter {
 
     public void createProjectFromSources(DocumentId sourcesId,
                                          UserId owner) throws IOException, OWLOntologyCreationException {
-        logger.info("{} Creating project from sources", projectId);
+        logger.info("{} Creating project from sources {}", projectId, sourcesId.getDocumentId());
         var stopwatch = Stopwatch.createStarted();
         var uploadedOntologies = uploadedOntologiesProcessor.getUploadedOntologies(sourcesId);
         logger.info("{} Loaded sources in {} ms", projectId, stopwatch.elapsed(TimeUnit.MILLISECONDS));
@@ -72,7 +72,7 @@ public class ProjectImporter {
         logger.info("{} Writing change log", projectId);
         generateInitialChanges(owner, uploadedOntologies);
         deleteSourceFile(sourcesId);
-        logger.info("{} Project creation from sources complete in {} ms", projectId, stopwatch.elapsed(TimeUnit.MILLISECONDS));
+        logger.info("{} Project creation from sources {} complete in {} ms", projectId, sourcesId.getDocumentId(),stopwatch.elapsed(TimeUnit.MILLISECONDS));
         memoryMonitor.logMemoryUsage();
 
     }
