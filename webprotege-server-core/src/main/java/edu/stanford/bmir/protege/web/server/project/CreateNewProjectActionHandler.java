@@ -4,6 +4,7 @@ import edu.stanford.bmir.protege.web.server.access.AccessManager;
 import edu.stanford.bmir.protege.web.server.access.ApplicationResource;
 import edu.stanford.bmir.protege.web.server.access.ProjectResource;
 import edu.stanford.bmir.protege.web.server.app.UserInSessionFactory;
+import edu.stanford.bmir.protege.web.server.app.WebProtegeProperties;
 import edu.stanford.bmir.protege.web.server.dispatch.ApplicationActionHandler;
 import edu.stanford.bmir.protege.web.server.dispatch.ExecutionContext;
 import edu.stanford.bmir.protege.web.server.dispatch.RequestContext;
@@ -11,6 +12,12 @@ import edu.stanford.bmir.protege.web.server.dispatch.RequestValidator;
 import edu.stanford.bmir.protege.web.server.dispatch.validators.ApplicationPermissionValidator;
 import edu.stanford.bmir.protege.web.server.dispatch.validators.CompositeRequestValidator;
 import edu.stanford.bmir.protege.web.server.dispatch.validators.UserIsSignedInValidator;
+import edu.stanford.bmir.protege.web.server.inject.DataDirectory;
+import edu.stanford.bmir.protege.web.server.inject.DataDirectoryProvider;
+import edu.stanford.bmir.protege.web.server.inject.UploadsDirectoryProvider;
+import edu.stanford.bmir.protege.web.server.inject.WebProtegePropertiesProvider;
+import edu.stanford.bmir.protege.web.server.session.WebProtegeSessionAttribute;
+import edu.stanford.bmir.protege.web.shared.csv.DocumentId;
 import edu.stanford.bmir.protege.web.shared.permissions.PermissionDeniedException;
 import edu.stanford.bmir.protege.web.shared.project.CreateNewProjectAction;
 import edu.stanford.bmir.protege.web.shared.project.CreateNewProjectResult;
@@ -22,6 +29,8 @@ import org.semanticweb.owlapi.model.OWLOntologyStorageException;
 
 import javax.annotation.Nonnull;
 import javax.inject.Inject;
+import java.io.File;
+import java.io.FilenameFilter;
 import java.io.IOException;
 
 import static com.google.common.base.Preconditions.checkNotNull;
@@ -81,40 +90,78 @@ public class CreateNewProjectActionHandler implements ApplicationActionHandler<C
     @Nonnull
     @Override
     public CreateNewProjectResult execute(@Nonnull CreateNewProjectAction action, @Nonnull ExecutionContext executionContext) {
-        try {
-            UserId userId = executionContext.getUserId();
-            if (!accessManager.hasPermission(forUser(userId), ApplicationResource.get(), CREATE_EMPTY_PROJECT)) {
-                throw new PermissionDeniedException("You do not have permission to create new projects",
-                                                    userInSessionFactory.getUserInSession(userId));
-            }
-            NewProjectSettings newProjectSettings = action.getNewProjectSettings();
-            if (newProjectSettings.hasSourceDocument()) {
-                if (!accessManager.hasPermission(forUser(userId), ApplicationResource.get(), UPLOAD_PROJECT)) {
-                    throw new PermissionDeniedException("You do not have permission to upload projects",
-                                                        userInSessionFactory.getUserInSession(userId));
+        ProjectId projectId = null;
+        if (action.getNewProjectSettings().getProjectDescription().equals("LoadLocal")) {
+            try {
+                UserId userId = executionContext.getUserId();
+                if (!accessManager.hasPermission(forUser(userId), ApplicationResource.get(), CREATE_EMPTY_PROJECT)) {
+                    throw new PermissionDeniedException("You do not have permission to create new projects",
+                            userInSessionFactory.getUserInSession(userId));
                 }
+                File f = new File("/srv/webprotege");
+                FilenameFilter filter = new FilenameFilter() {
+                    @Override
+                    public boolean accept(File f, String name) {
+                        return name.endsWith(".owl");
+                    }
+                };
+                String[] owlFiles = f.list(filter);
+                for (String owlFile : owlFiles) {
+                    DocumentId documentId = new DocumentId(owlFile);
+                    NewProjectSettings newProjectSettings = NewProjectSettings.get(userId, owlFile, "", "", documentId);
+                    if (newProjectSettings.hasSourceDocument()) {
+                        if (!accessManager.hasPermission(forUser(userId), ApplicationResource.get(), UPLOAD_PROJECT)) {
+                            throw new PermissionDeniedException("You do not have permission to upload projects",
+                                    userInSessionFactory.getUserInSession(userId));
+                        }
+                    }
+                    projectId = pm.createNewProject(newProjectSettings);
+                    if (!projectDetailsManager.isExistingProject(projectId)) {
+                        projectDetailsManager.registerProject(projectId, newProjectSettings);
+                        applyDefaultPermissions(projectId, userId);
+                    }
+                }
+                return new CreateNewProjectResult(projectDetailsManager.getProjectDetails(projectId));
+            } catch (OWLOntologyCreationException | OWLOntologyStorageException | IOException e) {
+                throw new RuntimeException(e);
             }
-            ProjectId projectId = pm.createNewProject(newProjectSettings);
-            if (!projectDetailsManager.isExistingProject(projectId)) {
-                projectDetailsManager.registerProject(projectId, newProjectSettings);
-                applyDefaultPermissions(projectId, userId);
+        } else {
+            try {
+                UserId userId = executionContext.getUserId();
+                if (!accessManager.hasPermission(forUser(userId), ApplicationResource.get(), CREATE_EMPTY_PROJECT)) {
+                    throw new PermissionDeniedException("You do not have permission to create new projects",
+                            userInSessionFactory.getUserInSession(userId));
+                }
+                NewProjectSettings newProjectSettings = action.getNewProjectSettings();
+                if (newProjectSettings.hasSourceDocument()) {
+                    if (!accessManager.hasPermission(forUser(userId), ApplicationResource.get(), UPLOAD_PROJECT)) {
+                        throw new PermissionDeniedException("You do not have permission to upload projects",
+                                userInSessionFactory.getUserInSession(userId));
+                    }
+                }
+                projectId = pm.createNewProject(newProjectSettings);
+                if (!projectDetailsManager.isExistingProject(projectId)) {
+                    projectDetailsManager.registerProject(projectId, newProjectSettings);
+                    applyDefaultPermissions(projectId, userId);
+                }
+                return new CreateNewProjectResult(projectDetailsManager.getProjectDetails(projectId));
+            } catch (OWLOntologyCreationException | OWLOntologyStorageException | IOException e) {
+                throw new RuntimeException(e);
             }
-            return new CreateNewProjectResult(projectDetailsManager.getProjectDetails(projectId));
-        } catch (OWLOntologyCreationException | OWLOntologyStorageException | IOException e) {
-            throw new RuntimeException(e);
         }
+
     }
 
     private void applyDefaultPermissions(ProjectId projectId, UserId userId) {
         ProjectResource projectResource = new ProjectResource(projectId);
         // Owner is manager
         accessManager.setAssignedRoles(forUser(userId),
-                                       projectResource,
-                                       asList(CAN_MANAGE.getRoleId(), PROJECT_DOWNLOADER.getRoleId()));
+                projectResource,
+                asList(CAN_MANAGE.getRoleId(), PROJECT_DOWNLOADER.getRoleId()));
         // Any signed in user can edit the layout
         accessManager.setAssignedRoles(forAnySignedInUser(),
-                                       projectResource,
-                                       singleton(LAYOUT_EDITOR.getRoleId()));
+                projectResource,
+                singleton(LAYOUT_EDITOR.getRoleId()));
     }
 
 

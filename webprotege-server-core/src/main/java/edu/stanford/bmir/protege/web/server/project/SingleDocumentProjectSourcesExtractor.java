@@ -4,6 +4,7 @@ import com.google.common.collect.Lists;
 import org.semanticweb.owlapi.io.FileDocumentSource;
 import org.semanticweb.owlapi.io.OWLOntologyDocumentSource;
 import org.semanticweb.owlapi.model.OWLOntologyIRIMapper;
+import org.semanticweb.owlapi.util.AutoIRIMapper;
 import org.semanticweb.owlapi.util.NonMappingOntologyIRIMapper;
 
 import javax.inject.Inject;
@@ -44,7 +45,7 @@ public class SingleDocumentProjectSourcesExtractor implements RawProjectSourcesE
 
         @Override
         public OWLOntologyIRIMapper getOntologyIRIMapper() {
-            return EMPTY_IRI_MAPPER;
+            return new AutoIRIMapper(new File("/srv/webprotege"), true);
         }
 
         @Override
