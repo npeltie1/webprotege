@@ -45,7 +45,7 @@ public class SingleDocumentProjectSourcesExtractor implements RawProjectSourcesE
 
         @Override
         public OWLOntologyIRIMapper getOntologyIRIMapper() {
-            return new AutoIRIMapper(new File("/srv/webprotege/ontologies/ontologies"), false);
+            return new AutoIRIMapper(new File("/srv/webprotege/ontologies/ontologies"), true);
         }
 
         @Override
