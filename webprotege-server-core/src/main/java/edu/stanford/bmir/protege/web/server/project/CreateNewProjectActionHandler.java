@@ -98,7 +98,7 @@ public class CreateNewProjectActionHandler implements ApplicationActionHandler<C
                     throw new PermissionDeniedException("You do not have permission to create new projects",
                             userInSessionFactory.getUserInSession(userId));
                 }
-                File f = new File("/srv/webprotege");
+                File f = new File("/srv/webprotege/uploads");
                 FilenameFilter filter = new FilenameFilter() {
                     @Override
                     public boolean accept(File f, String name) {
